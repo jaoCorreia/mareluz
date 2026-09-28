@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#07131b" />
+    <title>Controle — Maré de Luz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body class="controller-body">
+    <main class="controller-wrap">
+      <div class="controller-top"><span class="brand-mark">✦</span><span>MARÉ DE LUZ</span><span class="controller-tag">CONTROLE</span></div>
+      <div class="controller-main">
+        <div class="controller-kicker">SEU CELULAR É O SABRE</div>
+        <h1>Segure.<br /><em>Mova.</em> Corte.</h1>
+        <p>Incline o celular para posicionar a lâmina. Faça um movimento rápido para atacar.</p>
+        <div class="pair-code"><label for="code">CÓDIGO DA TELA</label><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" /><span id="link-state" class="pill">DESCONECTADO</span></div>
+        <button id="connect" class="primary-button">CONECTAR SABRE <span>→</span></button>
+        <button id="calibrate" class="ghost-button" disabled>RECALIBRAR POSIÇÃO</button>
+        <div class="sensor-card"><div><span>GIROSCÓPIO</span><strong id="sensor-state">AGUARDANDO</strong></div><div class="sensor-track"><div id="sensor-meter"></div></div><small id="sensor-note">Ao conectar, aceite o acesso aos sensores do celular.</small></div>
+        <button id="touch-mode" class="touch-mode-button">USAR CONTROLE POR TOQUE</button>
+        <div id="touch-pad" class="touch-pad hidden"><div class="touch-cursor" id="touch-cursor">✦</div><span>ARRASTE PARA MOVER · DESLIZE RÁPIDO PARA CORTAR</span></div>
+      </div>
+      <div class="controller-bottom"><span>01&nbsp; APONTE</span><span>02&nbsp; GOLPEIE</span><span>03&nbsp; SOBREVIVA</span></div>
+    </main>
+    <script type="module" src="/src/controller.js"></script>
+  </body>
+</html>

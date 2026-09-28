@@ -1,4 +1,6 @@
 import './style.css';
+import { MotionTracker, StrokeDetector } from './tracking.js';
+import { MAX_BATCH_SAMPLES } from './motion-limits.js';
 
 const codeInput = document.querySelector('#code');
 const connectButton = document.querySelector('#connect');
@@ -10,93 +12,114 @@ const meter = document.querySelector('#sensor-meter');
 const touchButton = document.querySelector('#touch-mode');
 const touchPad = document.querySelector('#touch-pad');
 const touchCursor = document.querySelector('#touch-cursor');
+const sensitivityInput = document.querySelector('#sensitivity');
+const stabilityInput = document.querySelector('#stability');
+const tracker = new MotionTracker();
+const touchStroke = new StrokeDetector();
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const screenAngle = () => window.screen.orientation?.angle ?? (Number(window.orientation) || 0);
+const createStreamId = () => window.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2);
 const urlCode = new URLSearchParams(location.search).get('code');
 if (urlCode) codeInput.value = urlCode.replace(/\D/g, '').slice(0, 6);
 
 let socket = null;
-let origin = null;
-let latestRotation = 0;
-let lastPoint = null;
-let lastSwing = 0;
-let lastSent = 0;
-let sensorsStarted = false;
 let paired = false;
+let sensorsStarted = false;
 let sensorReadings = 0;
 let touchMode = false;
-let touchPoint = null;
-
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const angleDelta = (a, b) => ((a - b + 540) % 360) - 180;
+let stream = createStreamId();
+let sequence = 0;
+let pending = [];
+let flushTimer = null;
+let needsReset = true;
+let activePointerId = null;
+let lastTouchPoint = { x: 0, y: 0 };
 
 function setLink(text, active = false) {
   linkState.textContent = text;
   linkState.classList.toggle('on', active);
 }
 
-function send(payload) {
-  if (socket?.readyState === WebSocket.OPEN && paired) socket.send(JSON.stringify(payload));
+function resetInput() {
+  // Each input session owns its stroke IDs, including switches between sensors and touch.
+  stream = createStreamId();
+  sequence = 0;
+  if (activePointerId !== null && touchPad.hasPointerCapture(activePointerId)) touchPad.releasePointerCapture(activePointerId);
+  activePointerId = null;
+  pending = [];
+  needsReset = true;
+  tracker.stroke.reset();
+  touchStroke.reset();
 }
 
-function onMotion(event) {
-  const rate = event.rotationRate;
-  const acceleration = event.acceleration;
-  latestRotation = Math.max(
-    Math.abs(rate?.alpha || 0),
-    Math.abs(rate?.beta || 0),
-    Math.abs(rate?.gamma || 0),
-    Math.hypot(acceleration?.x || 0, acceleration?.y || 0, acceleration?.z || 0) * 12
-  );
+function queueSample(result, time) {
+  if (!paired) { needsReset = true; return; }
+  pending.push({ ...result, time, seq: sequence++, reset: needsReset || result.reset });
+  needsReset = false;
+  if (pending.length > MAX_BATCH_SAMPLES) {
+    pending = pending.slice(-MAX_BATCH_SAMPLES);
+    pending[0].reset = true;
+  }
+  flushTimer ??= setTimeout(flush, 16);
+}
+
+function flush() {
+  flushTimer = null;
+  if (socket?.readyState !== WebSocket.OPEN || !paired || socket.bufferedAmount > 4096) {
+    pending = [];
+    needsReset = true;
+    return;
+  }
+  if (pending.length) socket.send(JSON.stringify({ type: 'motion', version: 2, stream, samples: pending }));
+  pending = [];
 }
 
 function onOrientation(event) {
   if (touchMode) return;
-  if (event.beta == null || event.gamma == null) return;
+  const time = performance.now();
+  const result = tracker.update({ alpha: event.alpha, beta: event.beta, gamma: event.gamma }, time, screenAngle());
+  if (!result) return;
   sensorReadings++;
-  if (!origin) origin = { beta: event.beta, gamma: event.gamma };
-  const x = clamp(angleDelta(event.gamma, origin.gamma) / 42, -1, 1);
-  const y = clamp(-angleDelta(event.beta, origin.beta) / 46, -1, 1);
-  const now = performance.now();
-  const velocity = lastPoint ? Math.hypot(x - lastPoint.x, y - lastPoint.y) / Math.max((now - lastPoint.time) / 1000, .01) : 0;
-  const speed = Math.max(velocity, latestRotation / 105);
-  const swing = speed > 1.35 && now - lastSwing > 190;
-  if (swing) lastSwing = now;
-  lastPoint = { x, y, time: now };
-  meter.style.width = `${clamp(speed / 3, 0, 1) * 100}%`;
-  sensorState.textContent = 'ATIVO';
-  sensorNote.textContent = 'Movimento detectado. Faça golpes laterais ou diagonais.';
-  if (now - lastSent > 28 || swing) {
-    send({ type: 'motion', x, y, speed, swing });
-    lastSent = now;
+  if (result.calibrating) {
+    sensorState.textContent = 'CALIBRANDO ' + Math.round(result.progress * 100) + '%';
+    sensorNote.textContent = 'Segure o celular na posição de jogo, parado por meio segundo.';
+    meter.style.width = result.progress * 100 + '%';
+  } else {
+    sensorState.textContent = result.active ? 'CORTANDO' : 'PRONTO';
+    sensorNote.textContent = 'Incline para mirar; cruze a criatura com a ponta da lâmina para cortar.';
+    meter.style.width = clamp(result.speed / 3, 0, 1) * 100 + '%';
   }
+  queueSample(result, time);
+}
+
+function watchForReadings() {
+  const before = sensorReadings;
+  setTimeout(() => {
+    if (!touchMode && sensorReadings === before) enableTouch('Nenhuma leitura do sensor. Confira as permissões; o toque está disponível abaixo.');
+  }, 4000);
 }
 
 async function startSensors() {
-  if (sensorsStarted) return true;
   if (!window.isSecureContext) {
-    sensorNote.textContent = 'Abra esta página por HTTPS para ativar os sensores.';
-    sensorState.textContent = 'HTTPS NECESSÁRIO';
+    sensorNote.textContent = 'Abra por HTTPS para ativar os sensores.';
     return false;
   }
   try {
     if (typeof DeviceOrientationEvent === 'undefined') throw new Error('Orientação indisponível neste navegador.');
-    const permissions = [];
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') permissions.push(DeviceOrientationEvent.requestPermission());
-    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') permissions.push(DeviceMotionEvent.requestPermission());
-    const results = await Promise.all(permissions);
-    if (results.some(result => result !== 'granted')) throw new Error('Acesso aos sensores negado.');
-    window.addEventListener('deviceorientation', onOrientation);
-    window.addEventListener('devicemotion', onMotion);
-    sensorsStarted = true;
+    if (!sensorsStarted) {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission !== 'granted') throw new Error('Acesso ao giroscópio negado.');
+      }
+      window.addEventListener('deviceorientation', onOrientation);
+      sensorsStarted = true;
+    }
+    tracker.recalibrate();
+    resetInput();
     calibrateButton.disabled = false;
     sensorState.textContent = 'CALIBRANDO';
-    sensorNote.textContent = 'Mantenha o celular na posição inicial por um instante.';
-    setTimeout(() => {
-      if (sensorReadings === 0) {
-        sensorState.textContent = 'SEM LEITURA';
-        sensorNote.textContent = 'O navegador não enviou dados de orientação. Confira as permissões e a conexão HTTPS.';
-        enableTouch();
-      }
-    }, 4000);
+    sensorNote.textContent = 'Segure o celular na posição de jogo, parado por meio segundo.';
+    watchForReadings();
     return true;
   } catch (error) {
     sensorState.textContent = 'SEM ACESSO';
@@ -105,78 +128,103 @@ async function startSensors() {
   }
 }
 
-function enableTouch() {
+function enableTouch(note = 'Arraste no quadro abaixo; um deslize rápido faz o corte.') {
   touchMode = true;
+  resetInput();
   touchPad.classList.remove('hidden');
-  touchButton.textContent = 'CONTROLE POR TOQUE ATIVO';
+  touchButton.textContent = 'VOLTAR AO GIROSCÓPIO';
+  calibrateButton.disabled = true;
   sensorState.textContent = 'TOQUE ATIVO';
-  sensorNote.textContent = 'Arraste no quadro abaixo; um deslize rápido faz o corte.';
+  sensorNote.textContent = note;
 }
 
-touchButton.addEventListener('click', enableTouch);
+touchButton.addEventListener('click', async () => {
+  if (!touchMode) { enableTouch(); return; }
+  touchMode = false;
+  if (await startSensors()) {
+    touchPad.classList.add('hidden');
+    touchButton.textContent = 'USAR CONTROLE POR TOQUE';
+  } else enableTouch(sensorNote.textContent + ' Use o quadro abaixo.');
+});
 
 function handleTouchPointer(event) {
   const bounds = touchPad.getBoundingClientRect();
   const x = clamp((event.clientX - bounds.left) / bounds.width, 0, 1);
   const y = clamp((event.clientY - bounds.top) / bounds.height, 0, 1);
-  const now = performance.now();
-  const speed = touchPoint ? Math.hypot(x - touchPoint.x, y - touchPoint.y) / Math.max((now - touchPoint.time) / 1000, .01) : 0;
-  const swing = speed > 1.25 && now - lastSwing > 190;
-  if (swing) lastSwing = now;
-  touchCursor.style.left = `${x * 100}%`;
-  touchCursor.style.top = `${y * 100}%`;
-  meter.style.width = `${clamp(speed / 3, 0, 1) * 100}%`;
-  if (now - lastSent > 28 || swing) {
-    send({ type: 'motion', x: (x - .5) * 2, y: (.5 - y) * 2, speed, swing });
-    lastSent = now;
-  }
-  touchPoint = { x, y, time: now };
+  const time = performance.now();
+  lastTouchPoint = { x: (x - .5) * 2, y: (.5 - y) * 2 };
+  const result = touchStroke.update(lastTouchPoint, time);
+  touchCursor.style.left = x * 100 + '%';
+  touchCursor.style.top = y * 100 + '%';
+  meter.style.width = clamp(result.speed / 3, 0, 1) * 100 + '%';
+  queueSample({ ...lastTouchPoint, ...result, calibrating: false }, time);
 }
 
 touchPad.addEventListener('pointerdown', event => {
+  if (activePointerId !== null) return;
+  activePointerId = event.pointerId;
   touchPad.setPointerCapture(event.pointerId);
-  touchPoint = null;
+  touchStroke.reset();
   handleTouchPointer(event);
 });
 touchPad.addEventListener('pointermove', event => {
-  if (touchPad.hasPointerCapture(event.pointerId)) handleTouchPointer(event);
+  if (event.pointerId === activePointerId && touchPad.hasPointerCapture(event.pointerId)) handleTouchPointer(event);
 });
-touchPad.addEventListener('pointerup', event => {
+function endTouch(event) {
+  if (event.pointerId !== activePointerId) return;
+  activePointerId = null;
   if (touchPad.hasPointerCapture(event.pointerId)) touchPad.releasePointerCapture(event.pointerId);
-  touchPoint = null;
-});
+  touchStroke.reset();
+  queueSample({ ...lastTouchPoint, speed: 0, strokeId: touchStroke.strokeId, active: false, reset: true }, performance.now());
+}
+touchPad.addEventListener('pointerup', endTouch);
+touchPad.addEventListener('pointercancel', endTouch);
+touchPad.addEventListener('lostpointercapture', endTouch);
 
 connectButton.addEventListener('click', async () => {
   const code = codeInput.value.replace(/\D/g, '').slice(0, 6);
-  if (code.length !== 6) {
-    setLink('DIGITE 6 DÍGITOS');
-    return;
-  }
-  if (!touchMode && !(await startSensors())) enableTouch();
+  if (code.length !== 6) { setLink('DIGITE 6 DÍGITOS'); return; }
+  if (!touchMode && !(await startSensors())) enableTouch(sensorNote.textContent + ' Use o quadro abaixo.');
   socket?.close();
   paired = false;
+  resetInput();
   setLink('CONECTANDO');
-  const connection = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/relay`);
+  const connection = new WebSocket((location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host + '/relay');
   socket = connection;
   connection.addEventListener('open', () => connection.send(JSON.stringify({ type: 'join', role: 'controller', code })));
   connection.addEventListener('message', event => {
+    if (socket !== connection) return;
     const data = JSON.parse(event.data);
     if (data.type === 'joined' || data.type === 'peer') {
+      const wasPaired = paired;
       paired = data.type === 'joined' ? true : data.connected;
+      if (wasPaired !== paired) resetInput();
       setLink(paired ? 'CONECTADO' : 'AGUARDANDO JOGO', paired);
     }
     if (data.type === 'error') setLink(data.message.toUpperCase());
-    if (data.type === 'feedback' && data.event === 'hit' && navigator.vibrate) navigator.vibrate(45);
-    if (data.type === 'feedback' && data.event === 'damage' && navigator.vibrate) navigator.vibrate([80, 35, 80]);
+    if (data.type === 'feedback' && data.event === 'hit') navigator.vibrate?.(35);
+    if (data.type === 'feedback' && data.event === 'damage') navigator.vibrate?.([80, 35, 80]);
   });
-  connection.addEventListener('close', () => { if (socket === connection) { paired = false; setLink('DESCONECTADO'); } });
+  connection.addEventListener('close', () => {
+    if (socket === connection) { paired = false; resetInput(); setLink('DESCONECTADO'); }
+  });
   connection.addEventListener('error', () => { if (socket === connection) setLink('FALHA NA CONEXÃO'); });
 });
 
 calibrateButton.addEventListener('click', () => {
-  origin = null;
-  lastPoint = null;
-  sensorNote.textContent = 'Nova posição inicial definida.';
+  tracker.recalibrate();
+  resetInput();
+  sensorState.textContent = 'CALIBRANDO';
+  sensorNote.textContent = 'Segure o celular parado por meio segundo.';
+  queueSample({ x: 0, y: 0, speed: 0, strokeId: tracker.stroke.strokeId, active: false, reset: true, calibrating: true }, performance.now());
 });
 
+for (const input of [sensitivityInput, stabilityInput]) input.addEventListener('input', () => {
+  tracker.configure({ sensitivity: Number(sensitivityInput.value), stability: Number(stabilityInput.value) });
+  resetInput();
+  document.querySelector('#sensitivity-value').textContent = Number(sensitivityInput.value).toFixed(1) + '×';
+  document.querySelector('#stability-value').textContent = Math.round(Number(stabilityInput.value) * 100) + '%';
+});
+
+document.addEventListener('visibilitychange', () => { tracker.recalibrate(); resetInput(); });
 window.addEventListener('beforeunload', () => socket?.close());

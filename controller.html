@@ -20,6 +20,7 @@
         <button id="connect" class="primary-button">CONECTAR SABRE <span>→</span></button>
         <button id="calibrate" class="ghost-button" disabled>RECALIBRAR POSIÇÃO</button>
         <div class="sensor-card"><div><span>GIROSCÓPIO</span><strong id="sensor-state">AGUARDANDO</strong></div><div class="sensor-track"><div id="sensor-meter"></div></div><small id="sensor-note">Ao conectar, aceite o acesso aos sensores do celular.</small></div>
+        <div class="precision-settings"><span>AJUSTE DO GIROSCÓPIO</span><label for="sensitivity">Sensibilidade <output id="sensitivity-value">1.0×</output></label><input id="sensitivity" type="range" min="0.5" max="1.8" step="0.1" value="1" /><label for="stability">Estabilidade <output id="stability-value">50%</output></label><input id="stability" type="range" min="0" max="1" step="0.1" value="0.5" /></div>
         <button id="touch-mode" class="touch-mode-button">USAR CONTROLE POR TOQUE</button>
         <div id="touch-pad" class="touch-pad hidden"><div class="touch-cursor" id="touch-cursor">✦</div><span>ARRASTE PARA MOVER · DESLIZE RÁPIDO PARA CORTAR</span></div>
       </div>

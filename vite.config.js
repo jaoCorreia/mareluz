@@ -54,7 +54,7 @@ function motionRelay() {
 }
 
 export default defineConfig(({ command }) => ({
-  build: { rollupOptions: { input: { game: path.resolve('index.html'), controller: path.resolve('controller.html') } } },
+  build: { rollupOptions: { input: { game: path.resolve('index.html'), controller: path.resolve('controller.html'), runner: path.resolve('corredor.html'), runnerController: path.resolve('corredor-controle.html') } } },
   server: { host: process.env.LOCAL_HTTP ? '127.0.0.1' : '0.0.0.0', port: process.env.LOCAL_HTTP ? 5174 : 5173, strictPort: true, https: command === 'serve' && !process.env.LOCAL_HTTP ? certificate() : undefined },
   plugins: [motionRelay()]
 }));

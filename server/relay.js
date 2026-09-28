@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { normalizeMotionPacket } from '../src/motion-protocol.js';
+import { normalizeRunnerInput } from '../src/runner/rules.js';
 
 export function attachRelay(server, { publicOrigin, allowOtherUpgrades = false } = {}) {
   const rooms = new Map();
@@ -44,8 +45,10 @@ export function attachRelay(server, { publicOrigin, allowOtherUpgrades = false }
           if (room.token && room.token !== data.token) { send(ws, { type: 'error', code: 'ROOM_TAKEN', message: 'Código já em uso. Reabra o jogo.' }); return; }
           if (!rooms.has(code) && rooms.size >= 256) { send(ws, { type: 'error', message: 'Servidor cheio. Tente novamente em instantes.' }); return; }
           room.token = data.token;
+          room.mode = data.mode === 'runner' ? 'runner' : 'saber';
         } else {
-          if (!room.game || room.game.readyState !== 1) { send(ws, { type: 'error', message: 'Jogo não encontrado.' }); return; }
+          if (!room.game || room.game.readyState !== 1) { send(ws, { type: 'error', code: 'ROOM_NOT_FOUND', message: 'Jogo não encontrado.' }); return; }
+          if (room.mode !== (data.mode === 'runner' ? 'runner' : 'saber')) { send(ws, { type: 'error', message: 'Abra o controle pelo QR code deste jogo.' }); return; }
           if (room.controller?.readyState === 1) { send(ws, { type: 'error', message: 'Já existe um controle conectado.' }); return; }
         }
         if (room[data.role] && room[data.role] !== ws) room[data.role].close();
@@ -60,9 +63,21 @@ export function attachRelay(server, { publicOrigin, allowOtherUpgrades = false }
       }
       const room = rooms.get(roomCode);
       if (!room || room[role] !== ws) return;
-      if (role === 'controller' && data.type === 'motion') {
+      if (role === 'controller' && room.mode === 'saber' && data.type === 'motion') {
         const packet = normalizeMotionPacket(data);
         if (packet) send(room.game, packet);
+      }
+      if (room.mode === 'runner') {
+        if (role === 'controller' && data.type === 'runner-input') {
+          const packet = normalizeRunnerInput(data);
+          if (packet) send(room.game, packet);
+        }
+        if (role === 'controller' && data.type === 'skill' && ['shield', 'pulse'].includes(data.skill)) send(room.game, { type: 'skill', skill: data.skill });
+        if (role === 'game' && data.type === 'runner-state' && ['ready', 'running', 'paused', 'over'].includes(data.phase)
+          && ['battery', 'energy', 'shield', 'pulse', 'score'].every(key => Number.isFinite(data[key]) && data[key] >= 0)) {
+          send(room.controller, { type: 'runner-state', phase: data.phase, battery: Math.min(100, data.battery), energy: Math.min(100, data.energy),
+            shield: Math.min(5, data.shield), pulse: Math.min(1, data.pulse), score: Math.min(1e9, data.score) });
+        }
       }
       if (role === 'game' && data.type === 'feedback' && ['hit', 'damage'].includes(data.event)) send(room.controller, { type: 'feedback', event: data.event });
     });

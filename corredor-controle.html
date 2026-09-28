@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#090f18"/><title>Controle — Fluxo</title><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/></head>
+<body class="phone-page">
+<main class="phone-wrap"><header class="phone-header"><a href="/corredor.html" class="wordmark">FLUXO<span>▰</span></a><span class="tag">CONTROLE REMOTO</span></header>
+<div class="eyebrow">SEU MOVIMENTO. SUA ESCOLHA.</div><h1>VIRE O<br/><em>JOGO.</em></h1><p class="lead">Tela para cima coleta dados.<br/>Tela para baixo deixa tudo passar.</p>
+<div class="connect-box"><label for="code">CÓDIGO DA PARTIDA</label><div class="code-row"><input id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="off"/><span id="link-state" role="status">OFFLINE</span></div></div>
+<button class="button primary" id="connect">CONECTAR CELULAR <span>↗</span></button>
+<div id="orientation-card" class="orientation-card"><div class="orientation-icon" aria-hidden="true"><div id="phone-model"><i></i></div></div><div><span class="eyebrow">POSIÇÃO DO CELULAR</span><strong id="pose-label">AGUARDANDO</strong><small id="sensor-note">Conecte e permita o acesso ao movimento.</small></div></div>
+<div class="phone-telemetry"><div><span>BATERIA</span><strong id="phone-battery">100<small>%</small></strong></div><div><span>ENERGIA AZUL</span><strong id="phone-energy">0<small>/100</small></strong></div></div>
+<div class="phone-skills"><button id="shield" class="skill-button" disabled><b>◈ ESCUDO</b><span>25 energia · 5 segundos</span></button><button id="pulse" class="skill-button" disabled><b>⌁ PULSO</b><span>40 energia · limpa vermelhos</span></button></div>
+<p id="run-note" class="run-note" role="status">Inicie a corrida no computador.</p>
+<button id="manual-mode" class="text-button">USAR CONTROLE POR TOQUE</button><div id="manual-controls" class="hidden"><button id="flip" class="button secondary">TELA PARA BAIXO · TOQUE PARA COLETAR</button></div>
+<div class="legend"><span><i class="dot blue"></i>AZUL = ENERGIA</span><span><i class="dot red"></i>VERMELHO = DANO</span></div>
+<a class="back-link" href="/corredor.html">← Voltar para o jogo</a>
+</main><script type="module" src="/src/runner/controller.js"></script></body>
+</html>

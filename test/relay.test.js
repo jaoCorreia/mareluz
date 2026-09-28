@@ -86,3 +86,16 @@ test('malformed upgrade targets cannot crash the relay', { timeout: 3000 }, asyn
   game.send(gameJoin);
   assert.equal((await game.next()).type, 'joined');
 });
+
+test('runner rooms isolate controls and forward orientation, skills and battery state', { timeout: 3000 }, async t => {
+  const f = await fixture(t);
+  const game = await f.connect(); game.send({ ...gameJoin, mode: 'runner' }); await game.next(); await game.next();
+  const phone = await f.connect(); phone.send(controllerJoin);
+  assert.match((await phone.next()).message, /QR code/);
+  phone.send({ ...controllerJoin, mode: 'runner' }); await phone.next(); await phone.next(); await game.next();
+  const input = { type: 'runner-input', version: 1, stream: 'device', seq: 0, time: 0, alpha: 0, beta: 15, gamma: 0, available: true };
+  phone.send(input); assert.deepEqual(await game.next(), input);
+  phone.send({ type: 'skill', skill: 'shield', battery: 999 }); assert.deepEqual(await game.next(), { type: 'skill', skill: 'shield' });
+  const state = { type: 'runner-state', phase: 'running', battery: 78, energy: 30, shield: 0, pulse: 0, score: 300 };
+  game.send(state); assert.deepEqual(await phone.next(), state);
+});

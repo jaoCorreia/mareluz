@@ -59,3 +59,17 @@ O servidor Node entrega as duas páginas e o WebSocket `/relay` na porta `PORT` 
 No Railway, use uma réplica, build `npm run build`, start `npm start` e healthcheck `/health`. Configure `PUBLIC_ORIGIN` com a URL HTTPS pública, sem barra final (ou use o domínio gerado em `RAILWAY_PUBLIC_DOMAIN`). O Railway termina o TLS e encaminha HTTP/WebSocket ao servidor. O QR code usa essa mesma URL; computador e celular podem estar em redes diferentes.
 
 As salas vivem na memória e são apagadas quando o serviço reinicia. Após um deploy, reabra o controle e conecte novamente. Use o QR code/código apenas com quem deve controlar a partida.
+
+## Fluxo — segundo jogo
+
+Abra `/corredor.html` no computador. O QR code leva a `/corredor-controle.html`, o controle exclusivo do Fluxo. O jogo é em primeira pessoa: mãos e celular acompanham a orientação do aparelho, enquanto você avança automaticamente pelo corredor.
+
+- **Tela para cima:** coleta todos os dados que chegam. **Tela para baixo ou na vertical:** não coleta.
+- **Azul (+):** dá pontos, 10 de energia e 1,5% de recarga. **Vermelho (!):** tira 22% da bateria.
+- A corrida consome 0,55% de bateria por segundo. Bateria zerada encerra a partida.
+- **Escudo:** custa 25 de energia e bloqueia vermelhos por 5 segundos. **Pulso:** custa 40 e remove os vermelhos presentes no corredor.
+- A velocidade, frequência e proporção de dados vermelhos aumentam com o tempo.
+- Sem celular: escolha **Experimentar com o teclado**. Espaço alterna a coleta, 1 ativa o escudo, 2 o pulso e Esc pausa.
+- A corrida pausa quando a aba do jogo é ocultada ou quando o controle deixa de enviar leituras válidas. Para voltar, ative o controle e pressione **Continuar** no computador.
+
+No celular, permita movimento no Safari/Chrome. Se os sensores não estiverem disponíveis, o controle oferece um botão de toque para virar o celular virtual. A classificação de tela para cima usa a normal física da tela em relação à gravidade, com uma pequena margem para evitar oscilações na posição quase vertical. O giroscópio de um aparelho físico ainda precisa de validação de uso real.
